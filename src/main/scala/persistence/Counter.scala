@@ -1,7 +1,7 @@
 package persistence
 
 import akka.actor.{ActorLogging, ActorSystem, Props}
-import akka.persistence.{PersistentActor, SnapshotOffer}
+import akka.persistence._
 
 object Counter {
   sealed trait Operation {
@@ -29,6 +29,7 @@ class Counter extends PersistentActor with ActorLogging {
   def updateState(evt: Evt): Unit = evt match {
     case Evt(Increment(count)) =>
       state = State(count = state.count + count)
+      takeSnapshot
     case Evt(Decrement(count)) =>
       state = State(count = state.count - count)
   }
@@ -40,6 +41,8 @@ class Counter extends PersistentActor with ActorLogging {
     case SnapshotOffer(_, snapshot: State) =>
       println(s"Counter receive snapshot with data: ${snapshot}")
       state = snapshot
+    case RecoveryCompleted =>
+      println(s"Recovery Complete and Now I'll switch to receiving mode :)")
   }
 
   override def receiveCommand: Receive = {
@@ -48,9 +51,22 @@ class Counter extends PersistentActor with ActorLogging {
       persist(Evt(op)) {evt => updateState(evt)}
     case "print" =>
       println(s"The Current state of counter is ${state}")
+    case SaveSnapshotSuccess(_) =>
+      println("save snapshot succeed.")
+    case SaveSnapshotFailure(_, reason) =>
+      println(s"save snapshot fail with $reason")
   }
 
+  //override def recovery = Recovery.none
+
   override def persistenceId = "counter-example"
+
+  def takeSnapshot = {
+    if (state.count % 5 == 0) {
+      saveSnapshot(state)
+    }
+  }
+
 }
 
 object Persistent extends App {
